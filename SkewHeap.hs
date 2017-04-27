@@ -1,8 +1,16 @@
+module SkewHeap where
+
 -- |A SkewHeap implementation with the min heap property.
 -- Useful for priority queues.
 data SkewHeap a = Null
                 | Node a (SkewHeap a) (SkewHeap a)
                 deriving (Eq, Show)
+
+-- |Returns root of heap.
+-- Complexity: O(1)
+root :: SkewHeap a -> Maybe a
+root Null = Nothing
+root (Node a _ _) = Just a
 
 -- |Merge two SkewHeaps.
 -- Complexity: O(lg n)
@@ -37,6 +45,14 @@ remove v (Node root left right)
 -- Complexity: O(n lg n)
 update :: Ord a => a -> a -> SkewHeap a -> SkewHeap a
 update old new heap = insert new (remove old heap)
+
+-- |Return a comma separated string of the SkewHeap
+-- Complexity: O(n)
+commaSeparatedStr :: (Show a) => SkewHeap a -> String
+commaSeparatedStr Null                  = ""
+commaSeparatedStr (Node val left right) =
+    show val ++ ", " ++ commaSeparatedStr left ++ commaSeparatedStr right
+
 
 -- XXX: Test data. Remove!
 l = Node 18 (Node 20 (Node 37 Null Null) Null) (Node 28 Null (Node 32 Null Null))
