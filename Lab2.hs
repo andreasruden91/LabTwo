@@ -1,4 +1,5 @@
 import Control.Applicative
+import Data.Maybe
 import Data.Ord
 import System.Environment
 import System.IO
@@ -14,32 +15,28 @@ data Bid
   | NewSell Person Price Price -- Person changes sell bid
   deriving Show
 
--- |Type for buy bids in a book, contains bid value and name of bidder.
+-- |Type for bids in a book, contains bid value and name of bidder.
 --
 -- SellBids are min ordered (ascending).
-data SellBid = SellBid Price Person
-    deriving Eq
-instance Ord SellBid where
-    compare (SellBid a _) (SellBid b _) = compare a b
-instance Show SellBid where
-    show (SellBid price name) = name ++ " " ++ show price
-
--- |Type for buy bids in a book, contains bid value and name of bidder.
 --
 -- BuyBids are max ordered (descending).
 -- This means comparison is reverse to whats "intuitive" for integers,
 -- as our heap is a min heap. NOTE: Possibly a better solution to have
 -- the heap creatable with either min or max heap property.
-data BuyBid = BuyBid Price Person
+data BidType
+    = SellBid Price Person
+    | BuyBid Price Person
     deriving Eq
-instance Ord BuyBid where
+instance Ord BidType where
+    compare (SellBid a _) (SellBid b _) = compare a b
     compare (BuyBid a _) (BuyBid b _) = compare b a
-instance Show BuyBid where
+instance Show BidType where
+    show (SellBid price name) = name ++ " " ++ show price
     show (BuyBid price name) = name ++ " " ++ show price
 
 -- |Book of buybids (first heap) and sellbids (second heap).
 data OrderBook =
-    OrderBook (SkewHeap BuyBid) (SkewHeap SellBid)
+    OrderBook (SkewHeap BidType) (SkewHeap BidType)
     deriving Show
 
 type Person = String
@@ -100,17 +97,34 @@ trade bids = innerTrade bids (OrderBook Null Null)
         putStrLn "Order book:"
         putStrLn $ "Sellers: " ++ commaSeparatedStr sell
         putStrLn $ "Buyers: " ++ commaSeparatedStr buy
-    innerTrade (b:bs) book@(OrderBook buy sell) =
-        innerTrade bs (tradeWork b book)
+    innerTrade (b:bs) book@(OrderBook buy sell) = do
+        newBook <- tradeWork b book
+        innerTrade bs newBook
     
     tradeWork (Buy person price) (OrderBook buy sell)
-        OrderBook (insert (BuyBid price person) buy) sell
+        | bidCompare price sell = do
+            let ((SellBid sellPrice sellName), newSell) = fromJust $ removeMin sell
+            putStrLn $ person ++ " buys from " ++ sellName ++ " for " ++ show price ++ "kr"
+            return (OrderBook buy newSell)
+        | otherwise             =
+            return $ OrderBook (insert (BuyBid price person) buy) sell 
 
-    tradeWork (Sell person price) (OrderBook buy sell) =
-        OrderBook buy (insert (SellBid price person) sell)
+    tradeWork (Sell person price) (OrderBook buy sell)
+        | bidCompare price buy = do
+            let ((BuyBid buyPrice buyName), newBuy) = fromJust $ removeMin buy
+            putStrLn $ buyName ++ " buys from " ++ person ++ " for " ++ show price ++ "kr"
+            return (OrderBook newBuy sell)
+        | otherwise = 
+            return $ OrderBook buy (insert (SellBid price person) sell)
 
     tradeWork (NewBuy person oldprice newprice) (OrderBook buy sell) =
-        OrderBook (update (BuyBid oldprice person) (BuyBid newprice person) buy) sell
+        tradeWork (Buy person newprice) (OrderBook (remove (BuyBid oldprice person) buy) sell)
 
     tradeWork (NewSell person oldprice newprice) (OrderBook buy sell) =
-        OrderBook buy (update (SellBid oldprice person) (SellBid newprice person) sell)
+        tradeWork (Sell person newprice) (OrderBook buy (remove (SellBid oldprice person) sell))
+
+    bidCompare bidA heap =
+        case root heap of
+            Nothing               -> False
+            Just (SellBid bidB _) -> bidA >= bidB
+            Just (BuyBid bidB _)  -> bidA <= bidB
